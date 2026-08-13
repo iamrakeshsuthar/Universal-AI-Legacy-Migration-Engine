@@ -1,0 +1,18 @@
+[
+  {
+    "rule_id": "COVERAGE_EXCEEDED",
+    "field": "POL_COVERAGE_AMOUNT",
+    "condition": "gt",
+    "value": 50000,
+    "severity": "warning",
+    "message": "Policy coverage exceeds high limit threshold ($50,000)."
+  },
+  {
+    "rule_id": "PREMIUM_ZERO",
+    "field": "POL_PREMIUM_AMOUNT",
+    "condition": "lt",
+    "value": 1,
+    "severity": "error",
+    "message": "Policy premium amount cannot be zero or negative."
+  }
+]
