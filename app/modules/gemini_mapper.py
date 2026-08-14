@@ -12,7 +12,7 @@ from google import genai
 
 # A robust list of 4 free/flash-tier models to cycle through if one is overloaded (503)
 # These are the latest, fastest baseline models available without billing.
-# A robust list of free/flash-tier models to cycle through if one is overloaded (503)
+# Robust fallback list of free/flash-tier models
 MODELS_TO_TRY = [
     "gemini-3.7-flash",
     "gemini-3.6-flash",
