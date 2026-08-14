@@ -1,6 +1,7 @@
 """
 target_schema_upload.py
-Parses custom JSON or CSV uploaded target schemas with robust error handling.
+Parses custom JSON or CSV uploaded target schemas with robust error handling
+and auto-conversion for various JSON structures.
 """
 
 import json
@@ -20,24 +21,46 @@ def parse_uploaded_target_schema(file_bytes: bytes, filename: str) -> List[Dict[
         except json.JSONDecodeError:
             raise ValueError("Invalid JSON file uploaded. Please check the file formatting.")
             
-        # If the user uploaded a dictionary (e.g., {"fields": [...]}), auto-extract the inner list
+        # If the user uploaded a dictionary (starts with {...})
         if isinstance(data, dict):
+            # Case A: Dictionary of dictionaries (e.g., {"field1": {"type": "string", "description": "..."}})
+            if data and all(isinstance(v, dict) for v in data.values()):
+                return [
+                    {
+                        "field": str(k),
+                        "type": str(v.get("type", "string")),
+                        "description": str(v.get("description", ""))
+                    }
+                    for k, v in data.items()
+                ]
+            
+            # Case B: Flat dictionary of key:type pairs (e.g., {"field1": "string", "field2": "integer"})
+            if data and all(isinstance(v, str) for v in data.values()):
+                return [
+                    {
+                        "field": str(k),
+                        "type": str(v),
+                        "description": ""
+                    }
+                    for k, v in data.items()
+                ]
+
+            # Case C: Dictionary containing a list (e.g., {"schema": [{"field": "f1"...}]})
             for key, value in data.items():
                 if isinstance(value, list):
                     data = value
                     break
             else:
-                raise ValueError("Could not find an array of fields in the uploaded JSON object.")
+                raise ValueError("JSON structure not recognized. Please use an array of objects [{\"field\": \"...\"}] or a key-value dictionary.")
         
-        # Ensure we are now working with a list
+        # Ensure we are now working with a list (for standard array formats)
         if not isinstance(data, list):
-            raise ValueError("Target schema JSON must be a list (array) of {field, type, description} objects.")
+            raise ValueError("Target schema JSON must be a list (array) or a valid dictionary object.")
             
         normalized = []
         for e in data:
-            # Prevent AttributeError by ensuring 'e' is actually a dictionary
             if not isinstance(e, dict):
-                raise ValueError(f"Expected a dictionary object in JSON array, but got a {type(e).__name__}.")
+                raise ValueError(f"Expected a dictionary object in JSON array, but got {type(e).__name__}.")
             
             normalized.append({
                 "field": str(e.get("field") or e.get("name") or ""),
