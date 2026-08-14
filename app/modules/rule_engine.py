@@ -1,40 +1,42 @@
 """
 rule_engine.py
-Dynamic Business Rules Validation Engine with Natural Language / PDF ingestion.
+Dynamic Business Rules Validation Engine with self-healing 503 fallback.
 """
 
 import json
 import io
 import re
+import time
 import PyPDF2
 from typing import List, Dict, Any, Optional
 
 import anthropic
 from google import genai
 
+# Robust fallback list of free/flash-tier models
+MODELS_TO_TRY = [
+    "gemini-3.7-flash",
+    "gemini-3.6-flash",
+    "gemini-3.5-flash",
+    "gemini-3.5-flash-lite",
+    "gemini-2.5-flash",
+    "gemini-2.5-flash-lite"
+]
+
 def _safe_extract_json(raw_text: str) -> List[Dict[str, Any]]:
-    """Bulletproof JSON extractor that hunts for arrays and ignores conversational filler."""
     if not raw_text or not raw_text.strip():
         raise ValueError("Received empty text from AI. This may be due to AI safety filters blocking the content.")
         
-    # 1. Try to find a markdown code block first
     match = re.search(r'```(?:json)?\s*(.*?)\s*```', raw_text, flags=re.DOTALL | re.IGNORECASE)
     if match:
         clean_str = match.group(1).strip()
     else:
-        # 2. If no markdown, hunt for the first '[' and last ']'
-        start_idx = raw_text.find('[')
-        end_idx = raw_text.rfind(']')
-        if start_idx != -1 and end_idx != -1:
-            clean_str = raw_text[start_idx:end_idx+1]
-        else:
-            # 3. Fallback to just stripping whitespace
-            clean_str = raw_text.strip()
+        start_idx, end_idx = raw_text.find('['), raw_text.rfind(']')
+        clean_str = raw_text[start_idx:end_idx+1] if start_idx != -1 and end_idx != -1 else raw_text.strip()
             
     return json.loads(clean_str)
 
 def extract_rules_from_document(file_bytes: bytes, file_name: str, ai_provider: str, api_key: str) -> List[Dict[str, Any]]:
-    """Reads PDF/TXT/MD and uses GenAI to convert natural language to JSON rules."""
     ext = file_name.split(".")[-1].lower()
     text_content = ""
     
@@ -66,13 +68,9 @@ def extract_rules_from_document(file_bytes: bytes, file_name: str, ai_provider: 
         
     else:
         client = genai.Client(api_key=api_key)
+        last_error = None
         
-        # 'gemini-flash-latest' is the most universally accessible alias across all Google API tiers
-        models = ["gemini-flash-latest", "gemini-1.5-flash", "gemini-2.5-flash"]
-        error_logs = []
-        
-        for model_name in models:
-            response = None
+        for model_name in MODELS_TO_TRY:
             try:
                 response = client.models.generate_content(
                     model=model_name, 
@@ -85,16 +83,14 @@ def extract_rules_from_document(file_bytes: bytes, file_name: str, ai_provider: 
                 return _safe_extract_json(response.text)
                 
             except Exception as e:
-                # Capture the exact error for this specific model attempt
-                err_msg = f"[{model_name}] {type(e).__name__}: {str(e)}"
-                if response and hasattr(response, 'text') and response.text:
-                    err_msg += f" | Raw Output: {response.text[:200]}"
-                error_logs.append(err_msg)
+                last_error = str(e)
+                # Intercept 503 Overload Errors and quietly cycle to the next model
+                if "503" in last_error or "UNAVAILABLE" in last_error.upper() or "demand" in last_error.lower():
+                    time.sleep(1)
+                    continue
                 continue
                 
-        # If we reach here, all models failed. Print the exact errors so we can see what Google is complaining about.
-        formatted_errors = "\n".join(error_logs)
-        raise RuntimeError(f"Gemini API failed to extract rules after trying multiple models.\nDetails:\n{formatted_errors}")
+        raise RuntimeError(f"Gemini API failed to extract rules after trying 4 fallback models. Last error: {last_error}")
 
 def validate_records(records: List[Dict[str, Any]], rules_spec: Optional[List[Dict[str, Any]]] = None) -> Dict[Any, List[Dict[str, str]]]:
     if not rules_spec: return {}
