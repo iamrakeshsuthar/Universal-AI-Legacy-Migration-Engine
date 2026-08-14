@@ -10,9 +10,11 @@ from typing import List, Dict, Any
 
 from google import genai
 
-# A robust list of 4 free/flash-tier models to cycle through if one is overloaded (503)
+# Restored so generic_source_parser.py and reconciler.py can successfully import it
+MODEL = "gemini-2.5-flash"
+
+# A robust list of free/flash-tier models to cycle through if one is overloaded (503)
 # These are the latest, fastest baseline models available without billing.
-# Robust fallback list of free/flash-tier models
 MODELS_TO_TRY = [
     "gemini-3.7-flash",
     "gemini-3.6-flash",
@@ -102,4 +104,4 @@ def get_gemini_mapping(api_key: str, canonical_sample: Dict[str, Any], target_sc
                 continue
             continue
 
-    raise RuntimeError(f"All 4 Gemini fallback models failed. Last error: {last_error}")
+    raise RuntimeError(f"All {len(MODELS_TO_TRY)} Gemini fallback models failed. Last error: {last_error}")
