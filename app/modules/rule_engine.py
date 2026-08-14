@@ -12,6 +12,24 @@ from typing import List, Dict, Any, Optional
 import anthropic
 from google import genai
 
+def _safe_extract_json(raw_text: str) -> List[Dict[str, Any]]:
+    """Bulletproof JSON extractor that hunts for arrays and ignores conversational filler."""
+    # 1. Try to find a markdown code block first
+    match = re.search(r'```(?:json)?\s*(.*?)\s*```', raw_text, flags=re.DOTALL | re.IGNORECASE)
+    if match:
+        clean_str = match.group(1).strip()
+    else:
+        # 2. If no markdown, hunt for the first '[' and last ']'
+        start_idx = raw_text.find('[')
+        end_idx = raw_text.rfind(']')
+        if start_idx != -1 and end_idx != -1:
+            clean_str = raw_text[start_idx:end_idx+1]
+        else:
+            # 3. Fallback to just stripping whitespace
+            clean_str = raw_text.strip()
+            
+    return json.loads(clean_str)
+
 def extract_rules_from_document(file_bytes: bytes, file_name: str, ai_provider: str, api_key: str) -> List[Dict[str, Any]]:
     """Reads PDF/TXT/MD and uses GenAI to convert natural language to JSON rules."""
     ext = file_name.split(".")[-1].lower()
@@ -41,26 +59,22 @@ def extract_rules_from_document(file_bytes: bytes, file_name: str, ai_provider: 
             messages=[{"role": "user", "content": prompt}]
         )
         text = "".join([b.text for b in response.content if getattr(b, "type", None) == "text"])
-        cleaned = re.sub(r"^```(json)?|```$", "", text.strip()).strip()
-        return json.loads(cleaned)
+        return _safe_extract_json(text)
+        
     else:
         client = genai.Client(api_key=api_key)
         
-        # Fallback chain to ensure stability across Google's model alias updates
-        models = ["gemini-2.5-flash", "gemini-1.5-flash", "gemini-2.0-flash"]
+        # Updated fallback chain with the most stable current Gemini models
+        models = ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-1.5-pro"]
         last_error = None
         
         for model_name in models:
             try:
-                # Dropped response_mime_type to prevent strict API server crashes
                 response = client.models.generate_content(
                     model=model_name, 
                     contents=prompt
                 )
-                
-                # Manually strip markdown fences and parse safely
-                cleaned = re.sub(r"^```(json)?|```$", "", response.text.strip(), flags=re.MULTILINE | re.IGNORECASE).strip()
-                return json.loads(cleaned)
+                return _safe_extract_json(response.text)
                 
             except Exception as e:
                 last_error = e
