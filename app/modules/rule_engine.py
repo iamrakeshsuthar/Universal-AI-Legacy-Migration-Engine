@@ -14,6 +14,9 @@ from google import genai
 
 def _safe_extract_json(raw_text: str) -> List[Dict[str, Any]]:
     """Bulletproof JSON extractor that hunts for arrays and ignores conversational filler."""
+    if not raw_text or not raw_text.strip():
+        raise ValueError("Received empty text from AI. This may be due to AI safety filters blocking the content.")
+        
     # 1. Try to find a markdown code block first
     match = re.search(r'```(?:json)?\s*(.*?)\s*```', raw_text, flags=re.DOTALL | re.IGNORECASE)
     if match:
@@ -64,23 +67,34 @@ def extract_rules_from_document(file_bytes: bytes, file_name: str, ai_provider: 
     else:
         client = genai.Client(api_key=api_key)
         
-        # Updated fallback chain with the most stable current Gemini models
-        models = ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-1.5-pro"]
-        last_error = None
+        # 'gemini-flash-latest' is the most universally accessible alias across all Google API tiers
+        models = ["gemini-flash-latest", "gemini-1.5-flash", "gemini-2.5-flash"]
+        error_logs = []
         
         for model_name in models:
+            response = None
             try:
                 response = client.models.generate_content(
                     model=model_name, 
                     contents=prompt
                 )
+                
+                if not response.text:
+                    raise ValueError("Empty response received. Google Safety Filters may have blocked the document extraction.")
+                    
                 return _safe_extract_json(response.text)
                 
             except Exception as e:
-                last_error = e
+                # Capture the exact error for this specific model attempt
+                err_msg = f"[{model_name}] {type(e).__name__}: {str(e)}"
+                if response and hasattr(response, 'text') and response.text:
+                    err_msg += f" | Raw Output: {response.text[:200]}"
+                error_logs.append(err_msg)
                 continue
                 
-        raise RuntimeError(f"Gemini API failed to extract rules. Last error: {last_error}")
+        # If we reach here, all models failed. Print the exact errors so we can see what Google is complaining about.
+        formatted_errors = "\n".join(error_logs)
+        raise RuntimeError(f"Gemini API failed to extract rules after trying multiple models.\nDetails:\n{formatted_errors}")
 
 def validate_records(records: List[Dict[str, Any]], rules_spec: Optional[List[Dict[str, Any]]] = None) -> Dict[Any, List[Dict[str, str]]]:
     if not rules_spec: return {}
