@@ -1,6 +1,6 @@
 """
 reconciler.py
-Handles interactive reconciliation, manual overrides, and AI-suggested fixes.
+Handles interactive reconciliation, manual overrides, and AI-suggested holistic row fixes.
 """
 
 from typing import List, Dict, Any
@@ -29,14 +29,28 @@ def resolve_anomaly(anomalies_dict: Dict[Any, List[Dict]], record_id: Any):
     if record_id in anomalies_dict:
         del anomalies_dict[record_id]
 
-def get_ai_fix_suggestion(record: Dict, anomaly: Dict, ai_provider: str, api_key: str) -> str:
-    """Asks the LLM to suggest a fix for a specific rule violation."""
-    prompt = f"The following record violated this business rule:\nRule: {anomaly['message']}\nRecord:\n{record}\n\nSuggest a brief, specific fix for the user. Example: 'Change coverage_amount to 50000'."
+def get_ai_fix_suggestion(record: Dict, anomalies: List[Dict], ai_provider: str, api_key: str) -> str:
+    """Asks the LLM to suggest holistic fixes for a record based on all its rule violations."""
+    
+    issues_text = "\n".join([f"- {a.get('rule_id', 'RULE')}: {a['message']}" for a in anomalies])
+    
+    prompt = f"""
+The following record has rule violations that need to be fixed.
+
+RULE VIOLATIONS:
+{issues_text}
+
+CURRENT RECORD DATA:
+{record}
+
+Analyze the entire row. Suggest specific fixes for any fields that need updating to resolve ALL violations. 
+Keep it concise. Example: 'Change coverage_amount to 50000 and update status to Active.'
+"""
     
     if ai_provider == "Claude":
         from modules.claude_mapper import MODEL as CLAUDE_MODEL
         client = anthropic.Anthropic(api_key=api_key)
-        res = client.messages.create(model=CLAUDE_MODEL, max_tokens=100, messages=[{"role": "user", "content": prompt}])
+        res = client.messages.create(model=CLAUDE_MODEL, max_tokens=200, messages=[{"role": "user", "content": prompt}])
         return "".join([b.text for b in res.content if getattr(b, "type", None) == "text"])
     else:
         client = genai.Client(api_key=api_key)
