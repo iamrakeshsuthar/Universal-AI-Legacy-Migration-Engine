@@ -3,9 +3,9 @@
     "rule_id": "COVERAGE_EXCEEDED",
     "field": "POL_COVERAGE_AMOUNT",
     "condition": "gt",
-    "value": 50000,
+    "value": 100000,
     "severity": "warning",
-    "message": "Policy coverage exceeds high limit threshold ($50,000)."
+    "message": "Policy coverage exceeds high limit threshold ($1,00,000)."
   },
   {
     "rule_id": "PREMIUM_ZERO",
