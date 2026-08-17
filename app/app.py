@@ -209,31 +209,42 @@ if st.session_state.target_records:
             
             # Ask AI for Suggestion Feature
             if st.button("✨ Ask AI for Fix Suggestion"):
-                with st.spinner(f"Asking {ai_provider} to analyze the violation..."):
-                    suggestion = get_ai_fix_suggestion(active_rec, issues[0], ai_provider, api_key)
+                with st.spinner(f"Asking {ai_provider} to analyze the violation(s)..."):
+                    # BUGFIX: Changed 'issues[0]' to 'issues' to pass all row violations to the AI
+                    suggestion = get_ai_fix_suggestion(active_rec, issues, ai_provider, api_key)
                     st.info(f"**AI Suggestion:** {suggestion}")
 
-            st.write("**Edit Record Data:**")
-            c_f, c_v = st.columns(2)
-            field_edit = c_f.selectbox("Field to Override", [k for k in active_rec.keys() if not str(k).startswith("_")])
-            new_val = c_v.text_input("New Value", value=str(active_rec.get(field_edit, "")))
+            st.write("**Edit Record Data (Entire Row):**")
+            
+            # Filter out system fields (starting with '_') for cleaner editing
+            editable_data = {k: v for k, v in active_rec.items() if not str(k).startswith("_")}
+            
+            # Interactive JSON editor for full row updates
+            edited_json_str = st.text_area(
+                "Update JSON to fix the record (modifying one or multiple fields)", 
+                value=json.dumps(editable_data, indent=2, default=str), 
+                height=300
+            )
 
             c_act1, c_act2 = st.columns(2)
             if c_act1.button("💾 Apply Fix & Re-Validate"):
-                # Attempt to preserve numbers as int/float
-                val_to_save = new_val
-                if new_val.isdigit():
-                    val_to_save = int(new_val)
-                else:
-                    try: val_to_save = float(new_val)
-                    except ValueError: pass
-
-                update_record_field(st.session_state.canonical, selected_rec, field_edit, val_to_save)
-                
-                # Re-validate and remap
-                st.session_state.anomalies = validate_records(st.session_state.canonical, st.session_state.custom_rules)
-                st.session_state.target_records = apply_mapping(st.session_state.canonical, st.session_state.mapping_spec, st.session_state.anomalies)
-                st.rerun()
+                try:
+                    # Parse the updated JSON
+                    updated_data = json.loads(edited_json_str)
+                    
+                    # Apply updates to the active record in the canonical state
+                    for r in st.session_state.canonical:
+                        if r.get("_record_id") == selected_rec or r.get("policy_number") == selected_rec:
+                            for k, v in updated_data.items():
+                                r[k] = v
+                            break
+                    
+                    # Re-validate and remap with the updated row
+                    st.session_state.anomalies = validate_records(st.session_state.canonical, st.session_state.custom_rules)
+                    st.session_state.target_records = apply_mapping(st.session_state.canonical, st.session_state.mapping_spec, st.session_state.anomalies)
+                    st.rerun()
+                except json.JSONDecodeError:
+                    st.error("⚠️ Invalid JSON format. Please ensure your edits maintain valid JSON structure before applying.")
 
             if c_act2.button("✅ Force Approve (Ignore Rule)"):
                 resolve_anomaly(st.session_state.anomalies, selected_rec)
