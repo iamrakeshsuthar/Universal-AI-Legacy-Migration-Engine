@@ -72,7 +72,6 @@ with st.sidebar:
     use_sample = st.checkbox("Use bundled sample legacy dataset", value=False)
     st.markdown("---")
     st.caption(f"🔒 Authenticated via backend secrets. Active Provider: **{ai_provider}**.")
-
 # ---------------------------------------------------------------------------
 # Milestone Visual Stepper
 # ---------------------------------------------------------------------------
@@ -81,16 +80,46 @@ cols = st.columns(len(steps))
 
 for i, step_label in enumerate(steps):
     step_num = i + 1
+    
+    # Determine styling based on milestone state
+    if step_num == st.session_state.current_step:
+        # Active Step - Light Blue
+        bg_color = "#e0f7fa"
+        border = "2px solid #00838f"
+        text_color = "#00838f"
+        font_weight = "bold"
+    elif step_num <= st.session_state.highest_step_reached:
+        # Completed Step - Light Green
+        bg_color = "#d4edda"
+        border = "1px solid #c3e6cb"
+        text_color = "#155724"
+        font_weight = "normal"
+    else:
+        # Locked Future Step - Gray
+        bg_color = "transparent"
+        border = "1px dashed #e0e0e0"
+        text_color = "#bdbdbd"
+        font_weight = "normal"
+
+    # Render a uniform Flexbox container for perfect alignment
     with cols[i]:
-        if step_num == st.session_state.current_step:
-            # Active Step Styling
-            st.markdown(f"**<div style='text-align: center; padding: 10px; background-color: #e0f7fa; border-radius: 5px; color: #00838f;'>{step_label}</div>**", unsafe_allow_html=True)
-        elif step_num <= st.session_state.highest_step_reached:
-            # Clickable Completed Step
-            st.button(step_label, key=f"nav_{step_num}", on_click=jump_to, args=(step_num,), use_container_width=True)
-        else:
-            # Locked Future Step
-            st.markdown(f"<div style='text-align: center; padding: 10px; color: #bdbdbd; border: 1px dashed #e0e0e0; border-radius: 5px;'>{step_label}</div>", unsafe_allow_html=True)
+        st.markdown(f"""
+        <div style='
+            height: 42px; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            background-color: {bg_color}; 
+            border: {border}; 
+            border-radius: 6px; 
+            color: {text_color}; 
+            font-weight: {font_weight};
+            font-size: 14px;
+            margin-bottom: 5px;
+        '>
+            {step_label}
+        </div>
+        """, unsafe_allow_html=True)
 
 st.markdown("---")
 
