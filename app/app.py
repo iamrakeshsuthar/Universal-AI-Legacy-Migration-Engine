@@ -185,8 +185,9 @@ if st.button("🚀 Run Complete Migration", disabled=not run_ready, type="primar
                 
         except Exception as e:
             st.error(f"AI Mapping failed: {str(e)}")
+
 # ---------------------------------------------------------------------------
-# Step 4: AI-Assisted Reconciliation Workspace (Whole Row Editing)
+# Step 4: AI-Assisted Reconciliation Workspace
 # ---------------------------------------------------------------------------
 if st.session_state.target_records:
     st.markdown("---")
@@ -204,69 +205,40 @@ if st.session_state.target_records:
             
             st.write("**Flagged Rule Violations:**")
             for iss in issues: 
-                st.error(f"[{iss.get('severity', 'ERROR').upper()}] {iss.get('rule_id', 'RULE')}: {iss['message']}")
+                st.error(f"[{iss['severity'].upper()}] {iss.get('rule_id', 'RULE')}: {iss['message']}")
             
-            # AI Suggestion Feature (Now analyzes ALL issues at once)
+            # Ask AI for Suggestion Feature
             if st.button("✨ Ask AI for Fix Suggestion"):
-                with st.spinner(f"Asking {ai_provider} to analyze the whole row and suggest fixes..."):
-                    # Notice we pass `issues` instead of `issues[0]` now
-                    suggestion = get_ai_fix_suggestion(active_rec, issues, ai_provider, api_key)
-                    st.info(f"**🤖 AI Suggestion:** {suggestion}")
+                with st.spinner(f"Asking {ai_provider} to analyze the violation..."):
+                    suggestion = get_ai_fix_suggestion(active_rec, issues[0], ai_provider, api_key)
+                    st.info(f"**AI Suggestion:** {suggestion}")
 
-            st.write("**Edit Record Data (Update any or all fields):**")
-            
-            # Form for whole-row side-by-side editing
-            with st.form(key=f"edit_form_{selected_rec}"):
-                updated_values = {}
-                display_fields = [k for k in active_rec.keys() if not str(k).startswith("_")]
+            st.write("**Edit Record Data:**")
+            c_f, c_v = st.columns(2)
+            field_edit = c_f.selectbox("Field to Override", [k for k in active_rec.keys() if not str(k).startswith("_")])
+            new_val = c_v.text_input("New Value", value=str(active_rec.get(field_edit, "")))
+
+            c_act1, c_act2 = st.columns(2)
+            if c_act1.button("💾 Apply Fix & Re-Validate"):
+                # Attempt to preserve numbers as int/float
+                val_to_save = new_val
+                if new_val.isdigit():
+                    val_to_save = int(new_val)
+                else:
+                    try: val_to_save = float(new_val)
+                    except ValueError: pass
+
+                update_record_field(st.session_state.canonical, selected_rec, field_edit, val_to_save)
                 
-                # Headers
-                col_h1, col_h2, col_h3 = st.columns([2, 2, 3])
-                col_h1.markdown("**Field Name**")
-                col_h2.markdown("**Original Value**")
-                col_h3.markdown("**New Value**")
-                
-                # Generate a row for every field in the record
-                for field in display_fields:
-                    orig_val = active_rec.get(field)
-                    c1, c2, c3 = st.columns([2, 2, 3])
-                    c1.text(field)
-                    c2.text(str(orig_val))
-                    
-                    # Editable input field for every attribute
-                    updated_values[field] = c3.text_input(
-                        f"edit_{field}", 
-                        value=str(orig_val if orig_val is not None else ""), 
-                        label_visibility="collapsed"
-                    )
+                # Re-validate and remap
+                st.session_state.anomalies = validate_records(st.session_state.canonical, st.session_state.custom_rules)
+                st.session_state.target_records = apply_mapping(st.session_state.canonical, st.session_state.mapping_spec, st.session_state.anomalies)
+                st.rerun()
 
-                st.markdown("---")
-                c_act1, c_act2 = st.columns(2)
-                submit_fixes = c_act1.form_submit_button("💾 Apply Fixes & Re-Validate", type="primary")
-                force_approve = c_act2.form_submit_button("✅ Force Approve (Ignore Rule)")
-
-                if submit_fixes:
-                    # Apply changes for every field dynamically
-                    for field, new_val in updated_values.items():
-                        # Try to preserve numeric types
-                        val_to_save = new_val
-                        if new_val.isdigit():
-                            val_to_save = int(new_val)
-                        else:
-                            try: val_to_save = float(new_val)
-                            except ValueError: pass
-                            
-                        update_record_field(st.session_state.canonical, selected_rec, field, val_to_save)
-
-                    # Re-validate and remap
-                    st.session_state.anomalies = validate_records(st.session_state.canonical, st.session_state.custom_rules)
-                    st.session_state.target_records = apply_mapping(st.session_state.canonical, st.session_state.mapping_spec, st.session_state.anomalies)
-                    st.rerun()
-
-                if force_approve:
-                    resolve_anomaly(st.session_state.anomalies, selected_rec)
-                    st.session_state.target_records = apply_mapping(st.session_state.canonical, st.session_state.mapping_spec, st.session_state.anomalies)
-                    st.rerun()
+            if c_act2.button("✅ Force Approve (Ignore Rule)"):
+                resolve_anomaly(st.session_state.anomalies, selected_rec)
+                st.session_state.target_records = apply_mapping(st.session_state.canonical, st.session_state.mapping_spec, st.session_state.anomalies)
+                st.rerun()
     else:
         st.success("🎉 All records passed business validation perfectly! No quarantine items.")
 
