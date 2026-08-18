@@ -73,6 +73,14 @@ def go_prev():
 def jump_to(step):
     st.session_state.current_step = step
 
+def toggle_sample_data():
+    """Clears loaded data whenever the sample data checkbox is toggled."""
+    st.session_state.canonical = None
+    st.session_state.raw_file_bytes = None
+    st.session_state.custom_rules = None
+    st.session_state.highest_step_reached = 1
+    st.session_state.current_step = 1
+
 # ---------------------------------------------------------------------------
 # Sidebar & Header UI
 # ---------------------------------------------------------------------------
@@ -81,7 +89,8 @@ st.caption("A working prototype: AI-assisted field mapping, automated anomaly de
 
 with st.sidebar:
     st.header("⚙️ Configuration")
-    use_sample = st.checkbox("Use bundled sample legacy dataset", value=False)
+    # Using the on_change callback to trigger a clean slate
+    use_sample = st.checkbox("Use bundled sample legacy dataset", value=False, on_change=toggle_sample_data)
     st.markdown("---")
     # Anonymized sidebar status
     st.caption("🔒 Authenticated via backend secrets. AI Engine: **Active**.")
