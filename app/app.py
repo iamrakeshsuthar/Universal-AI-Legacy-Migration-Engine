@@ -6,6 +6,7 @@ Features: Backend Secrets, ZIP Workspaces, PDF/NLP Rules GenAI, Interactive AI R
 import sys
 import os
 import json
+import re
 import streamlit as st
 import pandas as pd
 
@@ -24,14 +25,25 @@ st.set_page_config(page_title="Ultimate Migration Engine", layout="wide")
 SAMPLE_DIR = os.path.join(os.path.dirname(__file__), "sample_data")
 
 # ---------------------------------------------------------------------------
+# Helper Functions
+# ---------------------------------------------------------------------------
+def sanitize_error(error_obj):
+    """Scrubs specific provider names from error strings to anonymize the AI."""
+    msg = str(error_obj)
+    terms_to_hide = ["Gemini", "Claude", "Anthropic", "Google", "genai"]
+    for term in terms_to_hide:
+        msg = re.sub(term, "AI Engine", msg, flags=re.IGNORECASE)
+    return msg
+
+# ---------------------------------------------------------------------------
 # Backend AI Configuration (Hidden from UI)
 # ---------------------------------------------------------------------------
 try:
     ai_provider = st.secrets.get("AI_PROVIDER", "Claude")
     if ai_provider == "Claude":
-        api_key = st.secrets["ANTHROPIC_API_KEY"]
+        api_key = st.secrets.get("ANTHROPIC_API_KEY", "")
     else:
-        api_key = st.secrets["GOOGLE_API_KEY"]
+        api_key = st.secrets.get("GOOGLE_API_KEY", "")
 except KeyError:
     st.error("⚠️ Developer Notice: API Key or Provider not found. Please configure `.streamlit/secrets.toml`.")
     st.stop()
@@ -71,7 +83,9 @@ with st.sidebar:
     st.header("⚙️ Configuration")
     use_sample = st.checkbox("Use bundled sample legacy dataset", value=False)
     st.markdown("---")
-    st.caption(f"🔒 Authenticated via backend secrets. Active Provider: **{ai_provider}**.")
+    # Anonymized sidebar status
+    st.caption("🔒 Authenticated via backend secrets. AI Engine: **Active**.")
+
 # ---------------------------------------------------------------------------
 # Milestone Visual Stepper
 # ---------------------------------------------------------------------------
@@ -181,7 +195,8 @@ if st.session_state.current_step == 1:
                             st.session_state.custom_rules = extract_rules_from_document(extracted_rules_bytes, "rule.txt", ai_provider, api_key)
                         st.rerun()
                     except Exception as e:
-                        st.error(f"Ingestion Error: {str(e)}")
+                        # Anonymized error
+                        st.error(f"Ingestion Error: {sanitize_error(e)}")
 
     st.markdown("---")
     _, right_col = st.columns([8, 2])
@@ -237,12 +252,15 @@ elif st.session_state.current_step == 2:
             else:
                 rule_file = st.file_uploader("Upload Rules Manual (.pdf, .txt, .json)", key="r_file")
                 if rule_file:
-                    with st.spinner("🤖 AI is reading your policy document to extract JSON rules..."):
-                        if rule_file.name.endswith(".json"):
-                            st.session_state.custom_rules = json.loads(rule_file.read().decode('utf-8'))
-                        else:
-                            st.session_state.custom_rules = extract_rules_from_document(rule_file.read(), rule_file.name, ai_provider, api_key)
-                    st.rerun()
+                    with st.spinner("🤖 The AI Engine is reading your policy document to extract JSON rules..."):
+                        try:
+                            if rule_file.name.endswith(".json"):
+                                st.session_state.custom_rules = json.loads(rule_file.read().decode('utf-8'))
+                            else:
+                                st.session_state.custom_rules = extract_rules_from_document(rule_file.read(), rule_file.name, ai_provider, api_key)
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Rule Extraction Error: {sanitize_error(e)}")
 
     st.markdown("---")
     left_col, _, right_col = st.columns([2, 6, 2])
@@ -267,7 +285,7 @@ elif st.session_state.current_step == 3:
         with st.spinner("Validating records against business rules..."):
             st.session_state.anomalies = validate_records(st.session_state.canonical, st.session_state.custom_rules)
 
-        with st.spinner(f"{ai_provider} is mapping canonical source to target PAS schema..."):
+        with st.spinner("The AI Engine is mapping the canonical source to the target PAS schema..."):
             try:
                 st.session_state.mapping_spec = get_ai_mapping(ai_provider, api_key, st.session_state.canonical[0], st.session_state.target_schema)
                 
@@ -278,7 +296,7 @@ elif st.session_state.current_step == 3:
                     st.session_state.current_step = 4
                     st.rerun()
             except Exception as e:
-                st.error(f"AI Mapping failed: {str(e)}")
+                st.error(f"AI Mapping failed: {sanitize_error(e)}")
                 
     if st.session_state.target_records:
         st.success("✅ Migration engine has run successfully! You can proceed to Review & Reconciliation.")
@@ -313,9 +331,12 @@ elif st.session_state.current_step == 4:
                     st.error(f"[{iss['severity'].upper()}] {iss.get('rule_id', 'RULE')}: {iss['message']}")
                 
                 if st.button("✨ Ask AI for Fix Suggestion"):
-                    with st.spinner(f"Asking {ai_provider} to analyze the violation(s)..."):
-                        suggestion = get_ai_fix_suggestion(active_rec, issues, ai_provider, api_key)
-                        st.info(f"**AI Suggestion:** {suggestion}")
+                    with st.spinner("Asking the AI Engine to analyze the violation(s)..."):
+                        try:
+                            suggestion = get_ai_fix_suggestion(active_rec, issues, ai_provider, api_key)
+                            st.info(f"**AI Suggestion:** {sanitize_error(suggestion)}")
+                        except Exception as e:
+                            st.error(f"Failed to generate suggestion: {sanitize_error(e)}")
 
                 st.write("**Edit Record Data (Entire Row):**")
                 editable_data = {k: v for k, v in active_rec.items() if not str(k).startswith("_")}
@@ -333,7 +354,7 @@ elif st.session_state.current_step == 4:
                         st.session_state.target_records = apply_mapping(st.session_state.canonical, st.session_state.mapping_spec, st.session_state.anomalies)
                         st.rerun()
                     except json.JSONDecodeError:
-                        st.error("⚠️ Invalid JSON format.")
+                        st.error("⚠️ Invalid JSON format. Please ensure your edits maintain valid JSON structure before applying.")
 
                 if c_act2.button("✅ Force Approve (Ignore Rule)"):
                     resolve_anomaly(st.session_state.anomalies, selected_rec)
