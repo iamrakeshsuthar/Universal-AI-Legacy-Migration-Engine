@@ -1,10 +1,3 @@
-# CLAUDE.md — Project Instructions
-
-This file was provided to Claude at the start of development (the standing
-context an AI coding assistant reads before every task, similar to a
-`CLAUDE.md` in Claude Code or a Cowork project brief). It captures the
-constraints and design principles that shaped every subsequent prompt.
-
 ## Project
 
 **AI-Assisted Legacy Policy Migration Engine** — a capstone PoC for the
