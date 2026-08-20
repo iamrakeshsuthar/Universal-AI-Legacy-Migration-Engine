@@ -1,7 +1,6 @@
 ## Project
 
-**AI-Assisted Legacy Policy Migration Engine** — a capstone PoC for the
-Quantum Shift AI Practitioner+ program.
+**AI-Assisted Legacy Policy Migration Engine** — a capstone PoC
 
 **Business problem:** Legacy policy systems and historical data block
 digital transformation and cloud modernization. Manual migration is slow,
